@@ -37,23 +37,29 @@
     position: relative;
   }
   .topbar {
-    position: absolute;
+    position: fixed;
     top: 16px;
     left: 16px;
     right: 16px;
     display: flex;
     justify-content: space-between;
+    z-index: 50;
   }
   .icon-btn {
-    background: none;
+    background: rgba(0,0,0,0.25);
     border: none;
+    border-radius: 50%;
     color: var(--card);
     cursor: pointer;
-    padding: 6px;
-    opacity: 0.85;
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.95;
   }
   .icon-btn:hover { opacity: 1; }
-  .icon-btn svg { width: 22px; height: 22px; }
+  .icon-btn svg { width: 24px; height: 24px; }
 
   h1.page-title {
     color: var(--card);
@@ -89,40 +95,50 @@
   .tile-btn .flag { font-size: 44px; line-height: 1; }
   .tile-btn .label { color: var(--ink); font-family: var(--serif); font-size: 1rem; }
   .tile-btn .num { color: var(--ink); font-family: var(--serif); font-size: 2rem; }
-
   .card-shell {
-    position: relative;
-    width: 100%;
+    position: fixed;
+    left: 50%;
+    bottom: 15vh;
+    transform: translateX(-50%);
+    width: calc(100% - 40px);
     max-width: 380px;
-    min-height: 320px;
-    background: var(--card);
+    max-height: 70vh;
+    background: var(--card);    
     border: 1px solid var(--card-edge);
     border-radius: 18px;
-    padding: 40px 28px;
+    padding: 36px 28px 24px;
     box-shadow: 0 20px 50px rgba(0,0,0,0.35);
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
     text-align: center;
+    z-index: 10;
+    overflow-y: auto;
   }
-  .pip {
-    position: absolute;
-    font-family: var(--serif);
-    font-size: 1.1rem;
-    color: var(--gold);
-    user-select: none;
+  .card-content {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
   }
-  .pip.tl { top: 14px; left: 18px; }
-  .pip.br { bottom: 14px; right: 18px; transform: rotate(180deg); }
-  .pip.accent { color: var(--red); }
-
+  .card-action {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    padding-top: 24px;
+  }
   .word-counter {
+    position: fixed;
+    top: 72px;
+    left: 0;
+    right: 0;
+    text-align: center;
+    z-index: 30;
     color: var(--gold);
     font-size: 0.75rem;
     letter-spacing: 0.12em;
     text-transform: uppercase;
-    margin-bottom: 14px;
     opacity: 0.85;
   }
   .player-label {
@@ -174,10 +190,13 @@
     align-items: center;
     justify-content: center;
     gap: 8px;
+    line-height: 1;
   }
   .btn:active { transform: scale(0.96); }
   .btn-red { background: var(--red); }
   .btn-felt { background: var(--felt); }
+  .btn-amber { background: #E2A23B; color: var(--ink); }
+  .btn-blue { background: #2F6FA8; }  
 
   .error-text {
     color: var(--ink);
@@ -230,7 +249,7 @@ const TXT = {
     secretInstr: "Regardez seul(e) — personne d'autre ne doit voir l'écran.",
     btnSee: "Voir la syllabe",
     btnNext: "Joueur suivant",
-    revealedFor: (n) => `Syllabe du joueur ${n}`,
+    yourSyllable: "Voici votre syllabe :",
     btnSolution: "Afficher la solution",
     solutionIntro: "Le mot était :",
     btnNewWord: "Mot suivant",
@@ -250,7 +269,7 @@ const TXT = {
     secretInstr: "Mira solo/a — nadie más debe ver la pantalla.",
     btnSee: "Ver la sílaba",
     btnNext: "Siguiente jugador",
-    revealedFor: (n) => `Sílaba del jugador ${n}`,
+    yourSyllable: "Aquí tienes tu sílaba:",
     btnSolution: "Mostrar la solución",
     solutionIntro: "La palabra era:",
     btnNewWord: "Siguiente palabra",
@@ -259,8 +278,6 @@ const TXT = {
     btnRestart: "Volver a empezar",
   },
 };
-
-const SUITS = ["♠", "♥", "♦", "♣"];
 
 const ICON_HOME = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 3l9 6.5"/><path d="M5 10v10a1 1 0 0 0 1 1h3v-6h6v6h3a1 1 0 0 0 1-1V10"/></svg>';
 const ICON_EYE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/><circle cx="12" cy="12" r="3"/></svg>';
@@ -407,13 +424,12 @@ function topbar(showHome) {
   </div>`;
 }
 
-function cardShell(innerHtml, suit, accent) {
+function cardShell(contentHtml, buttonHtml) {
   return `<div class="card-shell">
-    <span class="pip tl ${accent ? "accent" : ""}">${suit}</span>
-    <span class="pip br ${accent ? "accent" : ""}">${suit}</span>
-    ${innerHtml}
+    <div class="card-content">${contentHtml}</div>
+    <div class="card-action">${buttonHtml || ""}</div>
   </div>`;
-}
+}  
 
 function render() {
   const app = document.getElementById("app");
@@ -453,65 +469,64 @@ function render() {
   else if (state.screen === "error") {
     html = `
       ${topbar(true)}
-      ${cardShell(`
-        <p class="error-text">${state.errorMsg}</p>
-        <button class="btn btn-red" onclick="Game.loadWords()">${T.retry}</button>
-      `, "♣")}`;
+      ${cardShell(
+        `<p class="error-text">${state.errorMsg}</p>`,
+        `<button class="btn btn-red" onclick="Game.loadWords()">${T.retry}</button>`
+      )}`;
   }
 
   else if (state.screen === "game") {
     const word = state.words[state.wordIndex] || {};
-    const suit = SUITS[(state.wordIndex + state.currentPlayer) % SUITS.length];
     const counter = `<p class="word-counter">${T.wordCounter(state.wordIndex + 1, state.words.length)}</p>`;
 
     if (state.phase === "finished") {
       html = `
         ${topbar(true)}
-        ${cardShell(`
-          <p class="gameover-title">${T.gameOverTitle}</p>
-          <p class="gameover-sub">${T.gameOverSub}</p>
-          <button class="btn btn-red" onclick="Game.resetAll()">${ICON_REPLAY} ${T.btnRestart}</button>
-        `, "♥", true)}`;
+        ${cardShell(
+          `<p class="gameover-title">${T.gameOverTitle}</p>
+           <p class="gameover-sub">${T.gameOverSub}</p>`,
+          `<button class="btn btn-red" onclick="Game.resetAll()">${ICON_REPLAY} ${T.btnRestart}</button>`
+        )}`;
     }
 
     else if (state.phase === "reveal-ready" || state.phase === "reveal-shown") {
       let inner = `<p class="player-label">${T.playerLabel(state.currentPlayer + 1)}</p>`;
+      let button = "";
       if (state.phase === "reveal-ready") {
-        inner += `
-          <p class="secret-instr">${T.secretInstr}</p>
-          <button class="btn btn-red" onclick="Game.seeSyllable()">${ICON_EYE} ${T.btnSee}</button>`;
+        inner += `<p class="secret-instr">${T.secretInstr}</p>`;
+        button = `<button class="btn btn-red" onclick="Game.seeSyllable()">${ICON_EYE} ${T.btnSee}</button>`;
       } else {
         inner += `
-          <p class="player-label">${T.revealedFor(state.currentPlayer + 1)}</p>
-          <p class="syllable-big">${state.assignments[state.currentPlayer]}</p>
-          <button class="btn btn-felt" onclick="Game.nextPlayer()">${T.btnNext} ${ICON_ARROW}</button>`;
+          <p class="player-label">${T.yourSyllable}</p>
+          <p class="syllable-big">${state.assignments[state.currentPlayer]}</p>`;
+        button = `<button class="btn btn-felt" onclick="Game.nextPlayer()">${T.btnNext} ${ICON_ARROW}</button>`;
       }
-      html = `${topbar(true)}${counter}${cardShell(inner, suit)}`;
+      html = `${topbar(true)}${counter}${cardShell(inner, button)}`;
     }
 
     else if (state.phase === "solution-ready") {
       html = `
         ${topbar(true)}
         ${counter}
-        ${cardShell(`
-          <p class="player-label">${T.playerLabel(state.playerCount)}</p>
-          <button class="btn btn-red" onclick="Game.showSolution()">${T.btnSolution}</button>
-        `, suit, true)}`;
+        ${cardShell(
+          ``,
+          `<button class="btn btn-amber" onclick="Game.showSolution()">${ICON_EYE} ${T.btnSolution}</button>`
+        )}`;
     }
 
     else if (state.phase === "solution-shown") {
       html = `
         ${topbar(true)}
         ${counter}
-        ${cardShell(`
-          <p class="player-label">${T.solutionIntro}</p>
-          <p class="solution-word">${word["Word"]}</p>
-          <p class="solution-syllables">${word["Syll"]}</p>
-          <button class="btn btn-red" onclick="Game.nextWord()">${T.btnNewWord}</button>
-        `, suit, true)}`;
+        ${cardShell(
+          `<p class="player-label">${T.solutionIntro}</p>
+           <p class="solution-word">${word["Word"]}</p>
+           <p class="solution-syllables">${word["Syll"]}</p>`,
+          `<button class="btn btn-blue" onclick="Game.nextWord()">${T.btnNewWord} ${ICON_ARROW}</button>`
+        )}`;
     }
   }
-
+  
   app.innerHTML = html;
 }
 
