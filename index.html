@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-<title>Vacarme</title>
+<title>Vacarme (une adaptation de One Voice)</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <style>
   :root {
@@ -226,12 +226,24 @@
 <div id="app"></div>
 
 <script>
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js').catch(err => {
+    console.warn('Service Worker non enregistré :', err);
+  });
+}  
 /* =========================================================
    CONFIGURATION — à adapter
    ========================================================= */
 // Lien du Google Sheet publié au format CSV
 // (Fichier > Partager > Publier sur le web > format CSV)
-const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTdnEpOivQC2Xjn9r183vcW_Da8WDAXqSF3hx6G7zaXmGL4XySz3yxwgaHtYkDYOjv16Nj6pNHMwAow/pub?gid=1957530806&single=true&output=csv";
+const CSV_URL_prod = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTdnEpOivQC2Xjn9r183vcW_Da8WDAXqSF3hx6G7zaXmGL4XySz3yxwgaHtYkDYOjv16Nj6pNHMwAow/pub?gid=1957530806&single=true&output=csv";
+const CSV_URL_test = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR0V09LlAx5ruJN3M6bVD1sZK9YndPIeDiA9I6tiQx_FXSmIxjl3-tKfpDG-XSuPic3JJST8yki86rv/pub?gid=1957530806&single=true&output=csv";  
+  
+const path = window.location.pathname;
+const CSV_URL = (path.includes('_test') || path.includes('_prex'))
+  ? CSV_URL_test
+  : CSV_URL_prod;
 
 /* =========================================================
    TEXTES
@@ -292,6 +304,7 @@ const state = {
   lang: "fr",
   playerCount: null,
   words: [],
+  allWords: [],    
   wordIndex: 0,
   assignments: [],
   currentPlayer: 0,
@@ -319,6 +332,17 @@ function setupWord(word, playerCount) {
   state.currentPlayer = 0;
   state.phase = "reveal-ready";
 }
+  
+function getWordCounts() {
+  try { return JSON.parse(localStorage.getItem('vacarme_counts') || '{}'); }
+  catch(e) { return {}; }
+}
+
+function incrementWordCount(word) {
+  const counts = getWordCounts();
+  counts[word] = (counts[word] || 0) + 1;
+  localStorage.setItem('vacarme_counts', JSON.stringify(counts));
+}
 
 /* =========================================================
    ACTIONS
@@ -332,9 +356,44 @@ const Game = {
 
   pickPlayers(n) {
     state.playerCount = n;
-    Game.loadWords();
+    if (state.allWords.length > 0) {
+      Game.filterAndStart();
+    } else {
+      Game.loadWords();
+    }
   },
 
+  filterAndStart() {
+    const langCode = state.lang.toUpperCase();
+    const filtered = state.allWords.filter(
+      (r) =>
+        (r.Lang || "").trim().toUpperCase() === langCode &&
+        parseInt(r.NbSyll, 10) === state.playerCount
+    );
+    if (!filtered.length) {
+      state.errorMsg = t().errEmpty(state.playerCount);
+      state.screen = "error";
+      render();
+      return;
+    }
+
+    const counts = getWordCounts();
+    const grouped = {};
+    filtered.forEach(r => {
+      const n = counts[r.Word] || 0;
+      if (!grouped[n]) grouped[n] = [];
+      grouped[n].push(r);
+    });
+    state.words = Object.keys(grouped)
+      .map(Number).sort((a, b) => a - b)
+      .flatMap(n => shuffle(grouped[n]));
+    
+    state.wordIndex = 0;
+    setupWord(state.words[0], state.playerCount);
+    state.screen = "game";
+    render();
+  },
+  
   async loadWords() {
     state.screen = "loading";
     state.errorMsg = "";
@@ -343,28 +402,9 @@ const Game = {
       const res = await fetch(CSV_URL);
       if (!res.ok) throw new Error("fetch failed");
       const csvText = await res.text();
-      const parsed = Papa.parse(csvText, { header: true, skipEmptyLines: true });
-      const rows = parsed.data;
-
-      const langCode = state.lang.toUpperCase();
-      const filtered = rows.filter(
-        (r) =>
-          (r.Lang || "").trim().toUpperCase() === langCode &&
-          parseInt(r.NbSyll, 10) === state.playerCount
-      );
-
-      if (!filtered.length) {
-        state.errorMsg = t().errEmpty(state.playerCount);
-        state.screen = "error";
-        render();
-        return;
-      }
-
-      state.words = shuffle(filtered);
-      state.wordIndex = 0;
-      setupWord(state.words[0], state.playerCount);
-      state.screen = "game";
-      render();
+      const result = Papa.parse(csvText, { header: true, skipEmptyLines: true });
+      state.allWords = result.data;
+      Game.filterAndStart();
     } catch (e) {
       console.error("Erreur de chargement du CSV :", e);
       state.errorMsg = t().errFetch;
@@ -372,7 +412,7 @@ const Game = {
       render();
     }
   },
-
+  
   seeSyllable() {
     state.phase = "reveal-shown";
     render();
@@ -389,6 +429,8 @@ const Game = {
   },
 
   showSolution() {
+    const word = state.words[state.wordIndex];
+    if (word) incrementWordCount(word.Word);
     state.phase = "solution-shown";
     render();
   },
